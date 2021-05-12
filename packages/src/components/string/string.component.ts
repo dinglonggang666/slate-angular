@@ -2,87 +2,108 @@ import {
     Component,
     OnInit,
     Input,
+    HostBinding,
     ChangeDetectionStrategy,
+    TemplateRef,
     OnChanges,
-    ElementRef,
-    ViewContainerRef,
-    AfterViewInit
+    SimpleChanges,
+    ViewChild
 } from '@angular/core';
-import { Editor, Path, Node } from 'slate';
-import { ViewContainerItem } from '../../view/container-item';
-import { SlateLeafContext, SlateStringContext } from '../../view/context';
+import { Path, Node, Element as SlateElement, Editor, Text } from 'slate';
 import { AngularEditor } from '../../plugins/angular-editor';
+import { ViewNodeService } from '../../services/view-node.service';
 
 @Component({
-    selector: 'span[slateString]',
-    template: '',
+    selector: 'sla-string,[slaString]',
+    templateUrl: 'string.component.html',
     changeDetection: ChangeDetectionStrategy.OnPush
 })
-export class SlateStringComponent extends ViewContainerItem<SlateStringContext> implements OnInit, OnChanges, AfterViewInit {
-    @Input() context: SlateLeafContext;
+export class SlaStringComponent implements OnInit, OnChanges {
+    initialized = false;
 
-    constructor(private elementRef: ElementRef<any>, protected viewContainerRef: ViewContainerRef) {
-        super(viewContainerRef, null);
-     }
+    @ViewChild('stringTemplate', { static: true })
+    stringTemplate: TemplateRef<any>;
+
+    @ViewChild('zeroTemplate', { static: true })
+    zeroTemplate: TemplateRef<any>;
+
+    @Input() text: Text;
+    @Input() parent: SlateElement;
+    @Input() isLast: boolean;
+    @Input() leaf: Text;
+    @Input() editor: AngularEditor;
+
+    context = {
+        leaf: null,
+        isTrailing: false,
+        zeroStringLength: 0,
+        isLineBreak: false
+    };
+
+    @HostBinding('attr.data-slate-leaf')
+    dataSlateLeaf = true;
+
+    contentTemplate: TemplateRef<any>;
+
+    constructor() {}
 
     ngOnInit(): void {
-        this.createView();
+        this.resetProperties();
+        this.initialized = true;
     }
 
-    ngOnChanges() {
-        if (!this.initialized) {
-            return;
+    ngOnChanges(simpleChangs: SimpleChanges) {
+        if (this.initialized) {
+            this.resetProperties();
         }
-        this.updateView();
     }
 
-    ngAfterViewInit() {
-        this.elementRef.nativeElement.remove();
-    }
+    resetProperties() {
+        this.contentTemplate = this.stringTemplate;
+        this.context.isLineBreak = false;
+        this.context.zeroStringLength = 0;
+        this.context.isTrailing = false;
+        this.context.leaf = this.leaf;
 
-    getViewType() {
-        const path = AngularEditor.findPath(this.viewContext.editor, this.context.text);
+        const path = AngularEditor.findPath(this.editor, this.text);
         const parentPath = Path.parent(path);
+        const parent = this.parent;
 
         // COMPAT: Render text inside void nodes with a zero-width space.
         // So the node can contain selection but the text is not visible.
-        if (this.viewContext.editor.isVoid(this.context.parent)) {
-            return this.viewContext.templateComponent.emptyStringTemplate;
+        if (this.editor.isVoid(parent)) {
+            this.contentTemplate = this.zeroTemplate;
+            this.context.zeroStringLength = Node.string(parent).length;
+            return;
         }
 
         // COMPAT: If this is the last text node in an empty block, render a zero-
         // width space that will convert into a line break when copying and pasting
         // to support expected plain text.
         if (
-            this.context.leaf.text === '' &&
-            this.context.parent.children[this.context.parent.children.length - 1] === this.context.text &&
-            !this.viewContext.editor.isInline(this.context.parent) &&
-            Editor.string(this.viewContext.editor, parentPath) === ''
+            this.leaf.text === '' &&
+            parent.children[parent.children.length - 1] === this.text &&
+            !this.editor.isInline(parent) &&
+            Editor.string(this.editor, parentPath) === ''
         ) {
-            return this.viewContext.templateComponent.lineBreakEmptyStringTemplate;
+            this.contentTemplate = this.zeroTemplate;
+            this.context.isLineBreak = true;
+            return;
         }
 
         // COMPAT: If the text is empty, it's because it's on the edge of an inline
         // node, so we render a zero-width space so that the selection can be
         // inserted next to it still.
-        if (this.context.leaf.text === '') {
-            return this.viewContext.templateComponent.emptyStringTemplate;
+        if (this.leaf.text === '') {
+            this.contentTemplate = this.zeroTemplate;
+            return;
         }
 
         // COMPAT: Browsers will collapse trailing new lines at the end of blocks,
         // so we need to add an extra trailing new lines to prevent that.
-        if (this.context.isLast && this.context.leaf.text.slice(-1) === '\n') {
-            return this.viewContext.templateComponent.compatStringTemplate;
+        if (this.isLast && this.leaf.text.slice(-1) === '\n') {
+            this.context.isTrailing = true;
+            return;
         }
-
-        return this.viewContext.templateComponent.stringTemplate;
-    }
-
-    getContext(): SlateStringContext {
-        return { text: this.context.leaf.text, elementStringLength: Node.string(this.context.parent).length };
-    }
-
-    memoizedContext(prev: SlateStringContext, next: SlateStringContext): boolean {
-        return false;
     }
 }

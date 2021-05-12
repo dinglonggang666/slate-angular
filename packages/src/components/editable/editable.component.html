@@ -1,2 +1,4 @@
-<slate-children [children]="editor.children" [context]="context" [viewContext]="viewContext" [viewContext]="viewContext"></slate-children>
-<slate-string-template #templateComponent></slate-string-template>
+<div>
+    <sla-nest-children-entry [children]="viewElements"></sla-nest-children-entry>
+</div>
+<sla-template #templateInstance [editor]="editor" [renderMark]="renderMark"></sla-template>

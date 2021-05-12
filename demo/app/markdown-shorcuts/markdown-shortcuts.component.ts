@@ -1,7 +1,7 @@
 import { Component, OnInit, ViewChild, TemplateRef } from '@angular/core';
-import { Editor, Range, Point, Transforms, createEditor, Element } from 'slate';
+import { Editor, Range, Point, Transforms, createEditor } from 'slate';
 import { withHistory } from 'slate-history';
-import { withAngular } from 'slate-angular';
+import { withAngular } from 'packages/src/public-api';
 
 @Component({
     selector: 'demo-markdown-shortcuts',
@@ -14,56 +14,14 @@ export class DemoMarkdownShortcutsComponent implements OnInit {
 
     editor = withShortcuts(withHistory(withAngular(createEditor())));
 
-    @ViewChild('blockquoteTemplate', { read: TemplateRef, static: true })
-    blockquoteTemplate: TemplateRef<any>;
-    @ViewChild('liTemplate', { read: TemplateRef, static: true })
-    liTemplate: TemplateRef<any>;
-    @ViewChild('ulTemplate', { read: TemplateRef, static: true })
-    ulTemplate: TemplateRef<any>;
-    @ViewChild('heading_1', { read: TemplateRef, static: true })
-    headingOneTemplate: TemplateRef<any>;
-    @ViewChild('heading_2', { read: TemplateRef, static: true })
-    headingTwoTemplate: TemplateRef<any>;
-    @ViewChild('heading_3', { read: TemplateRef, static: true })
-    headingThreeTemplate: TemplateRef<any>;
-    @ViewChild('heading_4', { read: TemplateRef, static: true })
-    headingFourTemplate: TemplateRef<any>;
-    @ViewChild('heading_5', { read: TemplateRef, static: true })
-    headingFiveTemplate: TemplateRef<any>;
-    @ViewChild('heading_6', { read: TemplateRef, static: true })
-    headingSixTemplate: TemplateRef<any>;
+    @ViewChild('elementTemplate', { read: TemplateRef, static: true })
+    elementTemplate: TemplateRef<any>;
 
     ngOnInit() {}
 
     renderElement() {
-        return (element: Element) => {
-            if (element.type === 'heading-one') {
-                return this.headingOneTemplate;
-            }
-            if (element.type === 'heading-two') {
-                return this.headingTwoTemplate;
-            }
-            if (element.type === 'heading-three') {
-                return this.headingThreeTemplate;
-            }
-            if (element.type === 'heading-four') {
-                return this.headingFourTemplate;
-            }
-            if (element.type === 'heading-five') {
-                return this.headingFiveTemplate;
-            }
-            if (element.type === 'heading-six') {
-                return this.headingSixTemplate;
-            }
-            if (element.type === 'block-quote') {
-                return this.blockquoteTemplate;
-            }
-            if (element.type === 'list-item') {
-                return this.liTemplate;
-            }
-            if (element.type === 'bulleted-list') {
-                return this.ulTemplate;
-            }
+        return (element: any) => {
+            return this.elementTemplate;
         };
     }
 
@@ -75,6 +33,7 @@ const initialValue = [
         children: [
             {
                 text:
+                    // tslint:disable-next-line:max-line-length
                     'The editor gives you full control over the logic you can add. For example, it\'s fairly common to want to add markdown-like shortcuts to editors. So that, when you start a line with "> " you get a blockquote that looks like this:'
             }
         ]
@@ -170,8 +129,7 @@ const withShortcuts = editor => {
 
                     if (block.type === 'list-item') {
                         Transforms.unwrapNodes(editor, {
-                            match: n => n.type === 'bulleted-list',
-                            split: true
+                            match: n => n.type === 'bulleted-list'
                         });
                     }
 

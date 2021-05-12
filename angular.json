@@ -28,26 +28,22 @@
                 "glob": "favicon.ico",
                 "input": "demo",
                 "output": "/"
-              },
-              {
-                "glob": "**/*",
-                "input": "demo/assets",
-                "output": "/assets"
               }
             ],
             "styles": [
               "demo/styles.scss"
             ],
-            "scripts": [],
+            "scripts": [
+            ],
             "allowedCommonJsDependencies": [
-              "lodash",
-              "debug",
-              "esrever",
-              "unified",
-              "remark-parse",
-              "remark-slate",
-              "rxjs/internal/scheduler/asap",
-              "faker"
+                "lodash",
+                "debug",
+                "esrever",
+                "unified",
+                "remark-parse",
+                "remark-slate",
+                "rxjs/internal/scheduler/asap",
+                "faker"
             ]
           },
           "configurations": {
@@ -154,11 +150,6 @@
           "options": {
             "tsConfig": "packages/tsconfig.lib.json",
             "project": "packages/ng-package.json"
-          },
-          "configurations": {
-            "production": {
-              "tsConfig": "packages/tsconfig.lib.prod.json"
-            }
           }
         },
         "test": {
@@ -166,9 +157,7 @@
           "options": {
             "main": "packages/src/test.ts",
             "tsConfig": "packages/tsconfig.spec.json",
-            "karmaConfig": "packages/karma.conf.js",
-            "codeCoverage": true,
-            "codeCoverageExclude": ["packages/src/testing/**/*"]
+            "karmaConfig": "packages/karma.conf.js"
           }
         },
         "lint": {

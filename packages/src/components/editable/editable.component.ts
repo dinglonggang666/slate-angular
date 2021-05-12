@@ -12,9 +12,7 @@ import {
     ChangeDetectorRef,
     NgZone,
     Injector,
-    forwardRef,
-    OnChanges,
-    SimpleChanges
+    forwardRef
 } from '@angular/core';
 import { NODE_TO_ELEMENT, IS_FOCUSED, EDITOR_TO_ELEMENT, ELEMENT_TO_NODE, IS_READONLY, EDITOR_TO_ON_CHANGE } from '../../utils/weak-maps';
 import { Text as SlateText, Element as SlateElement, Transforms, Editor, Range, Path, NodeEntry, Node } from 'slate';
@@ -36,13 +34,12 @@ import { IS_FIREFOX, IS_SAFARI, IS_EDGE_LEGACY, IS_CHROME_LEGACY } from '../../u
 import Hotkeys from '../../utils/hotkeys';
 import { BeforeInputEvent, extractBeforeInputEvent } from '../../custom-event/BeforeInputEventPlugin';
 import { BEFORE_INPUT_EVENTS } from '../../custom-event/before-input-polyfill';
-import { SlateErrorCode } from '../../types/error';
+import { ViewElement, ViewNode, ViewRefType } from '../../interfaces/view-node';
 import Debug from 'debug';
-import { SlateStringTemplateComponent } from '../string/template.component';
+import { ViewNodeService } from '../../services/view-node.service';
+import { SlaTemplateComponent } from '../template/template.component';
+import { SlaErrorCode } from '../../constants';
 import { NG_VALUE_ACCESSOR } from '@angular/forms';
-import { SlateChildrenContext, SlateViewContext } from '../../view/context';
-import { ViewType } from '../../types/view';
-import { isDecoratorRangeListEqual } from '../../utils';
 
 const timeDebug = Debug('slate-time');
 // COMPAT: Firefox/Edge Legacy don't support the `beforeinput` event
@@ -57,9 +54,9 @@ const HAS_BEFORE_INPUT_SUPPORT =
 const forceOnDOMPaste = IS_SAFARI;
 
 @Component({
-    selector: 'slate-editable',
+    selector: 'sla-editable',
     host: {
-        class: 'slate-editable-container',
+        class: 'sla-editable-container',
         '[attr.contenteditable]': 'readonly ? undefined : true',
         '[attr.role]': `readonly ? undefined : 'textbox'`,
         '[attr.spellCheck]': `!hasBeforeInputSupport ? undefined : spellCheck`,
@@ -68,16 +65,16 @@ const forceOnDOMPaste = IS_SAFARI;
     },
     templateUrl: 'editable.component.html',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    providers: [{
+    providers: [ViewNodeService, {
         provide: NG_VALUE_ACCESSOR,
-        useExisting: forwardRef(() => SlateEditableComponent),
+        useExisting: forwardRef(() => SlaEditableComponent),
         multi: true
     }]
 })
-export class SlateEditableComponent implements OnInit, OnChanges, OnDestroy {
+export class SlaEditableComponent implements OnInit, OnDestroy {
     selectionchangeEventName = 'selectionchange';
-    viewContext: SlateViewContext;
-    context: SlateChildrenContext;
+
+    viewElements: ViewElement[] = [];
 
     private destroy$ = new Subject();
 
@@ -95,15 +92,17 @@ export class SlateEditableComponent implements OnInit, OnChanges, OnDestroy {
 
     private onChangeCallback: (_: any) => void = () => { };
 
-    @Input() editor: AngularEditor;
+    @Input()
+    editor: AngularEditor;
 
-    @Input() renderElement: (element: SlateElement) => ViewType;
+    @Input()
+    renderElement: (element: SlateElement) => ViewRefType;
 
-    @Input() renderLeaf: (text: SlateText) => ViewType;
+    @Input()
+    renderLeaf: (text: SlateText) => TemplateRef<any>;
 
-    @Input() renderText: (text: SlateText) => ViewType;
-
-    @Input() decorate: (entry: NodeEntry) => Range[] = () => [];
+    @Input()
+    renderMark: (text: SlateText) => { rootDOM: HTMLElement; deepestDOM: HTMLElement };
 
     @Input()
     readonly = false;
@@ -124,10 +123,16 @@ export class SlateEditableComponent implements OnInit, OnChanges, OnDestroy {
     @Input() slaPaste: (event: KeyboardEvent) => void;
     //#endregion
 
+    @ViewChild('templateInstance', { static: true })
+    templateInstance: SlaTemplateComponent;
+
     //#region DOM attr
-    @Input() spellCheck = false;
-    @Input() autoCorrect = false;
-    @Input() autoCapitalize = false;
+    @Input()
+    spellCheck = false;
+    @Input()
+    autoCorrect = false;
+    @Input()
+    autoCapitalize = false;
 
     @HostBinding('attr.data-slate-editor') dataSlateEditor = true;
     @HostBinding('attr.data-slate-node') dataSlateNode = 'value';
@@ -138,43 +143,43 @@ export class SlateEditableComponent implements OnInit, OnChanges, OnDestroy {
     }
     //#endregion
 
-    @ViewChild('templateComponent', { static: true }) templateComponent: SlateStringTemplateComponent;
+
+    decorations: Range[];
+
+    @Input() decorate: (entry: NodeEntry) => Range[] = () => [];
 
     constructor(
         public elementRef: ElementRef,
         public renderer2: Renderer2,
         public cdr: ChangeDetectorRef,
         private ngZone: NgZone,
+        private viewNodeService: ViewNodeService,
         private injector: Injector
     ) { }
 
     ngOnInit() {
         this.editor.injector = this.injector;
-        this.editor.children = [];
+        this.decorations = this.decorate([this.editor, []]);
+        this.viewNodeService.initialize(
+            this.editor,
+            this.renderElement,
+            this.renderLeaf,
+            this.templateInstance,
+            this.decorate,
+            this.readonly
+        );
         EDITOR_TO_ELEMENT.set(this.editor, this.elementRef.nativeElement);
         NODE_TO_ELEMENT.set(this.editor, this.elementRef.nativeElement);
         ELEMENT_TO_NODE.set(this.elementRef.nativeElement, this.editor);
         IS_READONLY.set(this.editor, this.readonly);
         EDITOR_TO_ON_CHANGE.set(this.editor, () => {
             this.ngZone.run(() => {
-                this.onChange();
+                this.onEditorValueChange();
             });
         });
         this.ngZone.runOutsideAngular(() => {
             this.initialize();
         });
-        this.initializeViewContext();
-        this.initializeContext();
-    }
-
-    ngOnChanges(simpleChanges: SimpleChanges) {
-        if (!this.initialized) {
-            return;
-        }
-        const decorateChange = simpleChanges['decorate'];
-        if (decorateChange) {
-            this.detectContext();
-        }
     }
 
     registerOnChange(fn: any) {
@@ -187,8 +192,21 @@ export class SlateEditableComponent implements OnInit, OnChanges, OnDestroy {
     writeValue(value: Node[]) {
         if (value && value.length) {
             this.editor.children = value;
+            this.viewElements = this.viewNodeService.pack(this.viewElements, this.decorations);
             this.cdr.markForCheck();
         }
+    }
+
+    public forceFlush() {
+        timeDebug('start data sync');
+        this.viewElements = this.viewNodeService.pack(this.viewElements, this.decorations);
+        this.cdr.detectChanges();
+        this.toNativeSelection();
+        timeDebug('end data sync');
+    }
+
+    trackByKey(index, item: ViewNode) {
+        return item.key;
     }
 
     initialize() {
@@ -308,54 +326,13 @@ export class SlateEditableComponent implements OnInit, OnChanges, OnDestroy {
                 this.isUpdatingSelection = false;
             });
         } catch (error) {
-            this.editor.onError({ code: SlateErrorCode.ToNativeSelectionError, nativeError: error })
+            this.editor.onError({ code: SlaErrorCode.ToNativeSelectionError, nativeError: error })
         }
     }
 
-    onChange() {
+    onEditorValueChange() {
         this.forceFlush();
         this.onChangeCallback(this.editor.children);
-    }
-
-    forceFlush() {
-        timeDebug('start data sync');
-        this.detectContext();
-        this.cdr.detectChanges();
-        this.toNativeSelection();
-        timeDebug('end data sync');
-    }
-
-    initializeContext() {
-        this.context = {
-            parent: this.editor,
-            selection: this.editor.selection,
-            decorations: this.decorate([this.editor, []]),
-            decorate: this.decorate
-        };
-    }
-
-    initializeViewContext() {
-        this.viewContext = {
-            editor: this.editor,
-            renderElement: this.renderElement,
-            renderLeaf: this.renderLeaf,
-            renderText: this.renderText,
-            templateComponent: this.templateComponent,
-            readonly: this.readonly
-        };
-    }
-
-    detectContext() {
-        if (this.context.selection !== this.editor.selection || this.context.decorate !== this.decorate) {
-            const decorations = this.decorate([this.editor, []]);
-            const isSameDecorations = isDecoratorRangeListEqual(this.context.decorations, decorations);
-            this.context = {
-                parent: this.editor,
-                selection: this.editor.selection,
-                decorations: isSameDecorations ? this.context.decorations : decorations,
-                decorate: this.decorate
-            };
-        }
     }
 
     //#region event proxy
@@ -399,7 +376,7 @@ export class SlateEditableComponent implements OnInit, OnChanges, OnDestroy {
                     Transforms.select(this.editor, range);
                 }
             } catch (error) {
-                this.editor.onError({ code: SlateErrorCode.ToSlateSelectionError, nativeError: error })
+                this.editor.onError({ code: SlaErrorCode.ToSlateSelectionError, nativeError: error })
             }
         }
     }
@@ -524,7 +501,7 @@ export class SlateEditableComponent implements OnInit, OnChanges, OnDestroy {
                     }
                 }
             } catch (error) {
-                this.editor.onError({ code: SlateErrorCode.OnDOMBeforeInputError, nativeError: error });
+                this.editor.onError({ code: SlaErrorCode.OnDOMBeforeInputError, nativeError: error });
             }
             timeDebug('with intent end beforeinput');
         }
@@ -934,7 +911,7 @@ export class SlateEditableComponent implements OnInit, OnChanges, OnDestroy {
                     }
                 }
             } catch (error) {
-                this.editor.onError({ code: SlateErrorCode.OnDOMKeydownError, nativeError: error });
+                this.editor.onError({ code: SlaErrorCode.OnDOMKeydownError, nativeError: error });
             }
         }
     }
@@ -986,7 +963,7 @@ export class SlateEditableComponent implements OnInit, OnChanges, OnDestroy {
                 }
                 Editor.insertText(this.editor, text);
             } catch (error) {
-                this.editor.onError({ code: SlateErrorCode.ToNativeSelectionError, nativeError: error });
+                this.editor.onError({ code: SlaErrorCode.ToNativeSelectionError, nativeError: error });
             }
         }
     }

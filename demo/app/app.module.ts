@@ -7,20 +7,16 @@ import { FormsModule } from '@angular/forms';
 import { BrowserModule } from '@angular/platform-browser';
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { NgModule } from '@angular/core';
-import { SlateModule } from 'slate-angular';
+import { SlateModule } from 'packages/src/slate.module';
 import { DemoElementImageComponent } from './components/image/image-component';
-import { DemoMarkTextComponent } from './components/text/text.component';
-import { DemoButtonComponent } from './components/button/button.component';
 
 @NgModule({
     declarations: [
         AppComponent,
-        DemoButtonComponent,
         DemoRichtextComponent,
         DemoMarkdownShortcutsComponent,
         DemoHugeDocumentComponent,
-        DemoElementImageComponent,
-        DemoMarkTextComponent
+        DemoElementImageComponent
     ],
     imports: [
         BrowserModule,
@@ -29,7 +25,6 @@ import { DemoButtonComponent } from './components/button/button.component';
         FormsModule,
         SlateModule
     ],
-    entryComponents: [DemoMarkTextComponent],
     providers: [
     ],
     bootstrap: [AppComponent]
